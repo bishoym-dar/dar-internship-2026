@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Alaa Mohamad — Resume</title>
+<style>
+  :root{
+    --ink:#1c1f24;
+    --sub:#4a5058;
+    --rule:#d8dce1;
+    --accent:#1f5f5b;
+    --accent-soft:#e7f0ef;
+    --page-bg:#f6f7f5;
+    --paper:#ffffff;
+  }
+
+  *{box-sizing:border-box;}
+
+  html,body{
+    margin:0;
+    padding:0;
+    background:var(--page-bg);
+    color:var(--ink);
+    font-family:'Georgia','Iowan Old Style','Times New Roman',serif;
+  }
+
+  .sheet{
+    max-width:820px;
+    margin:32px auto;
+    background:var(--paper);
+    padding:52px 60px 56px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.05);
+  }
+
+  /* Header */
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    border-bottom:2px solid var(--ink);
+    padding-bottom:14px;
+    margin-bottom:22px;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  h1{
+    margin:0;
+    font-size:30px;
+    letter-spacing:0.3px;
+    font-weight:400;
+    font-variant-caps:small-caps;
+  }
+  .contact{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:12.5px;
+    color:var(--sub);
+    text-align:right;
+    line-height:1.7;
+  }
+  .contact a{ color:var(--sub); text-decoration:none; border-bottom:1px solid var(--rule); }
+  .contact a:hover{ color:var(--accent); border-color:var(--accent); }
+  .contact .sep{ color:var(--rule); margin:0 6px; }
+
+  /* Section labels */
+  section{ margin-bottom:22px; }
+  section:last-child{ margin-bottom:0; }
+
+  h2{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:11px;
+    letter-spacing:2.4px;
+    text-transform:uppercase;
+    color:var(--accent);
+    font-weight:700;
+    margin:0 0 10px 0;
+    padding-bottom:4px;
+    border-bottom:1px solid var(--rule);
+  }
+
+  /* Entries */
+  .entry{ margin-bottom:14px; }
+  .entry:last-child{ margin-bottom:0; }
+
+  .entry-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    flex-wrap:wrap;
+    gap:2px 12px;
+  }
+  .role{
+    font-size:15px;
+    font-weight:700;
+  }
+  .org{
+    font-size:14px;
+    font-style:italic;
+    color:var(--sub);
+  }
+  .when, .where{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:11.5px;
+    color:var(--sub);
+    white-space:nowrap;
+  }
+  .line2{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    flex-wrap:wrap;
+    margin-bottom:4px;
+  }
+
+  ul{
+    margin:6px 0 0 0;
+    padding-left:18px;
+  }
+  li{
+    font-size:13.3px;
+    line-height:1.55;
+    margin-bottom:3px;
+    padding-left:2px;
+  }
+  li::marker{ color:var(--accent); }
+
+  .proj-title{
+    font-size:14.5px;
+    font-weight:700;
+  }
+  .proj-tags{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-size:11px;
+    color:var(--accent);
+    font-weight:600;
+    letter-spacing:0.2px;
+  }
+
+  /* Skills */
+  .skills-grid{
+    display:grid;
+    grid-template-columns:150px 1fr;
+    row-gap:7px;
+    column-gap:14px;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+  }
+  .skills-grid dt{
+    font-size:11.5px;
+    font-weight:700;
+    letter-spacing:0.3px;
+    color:var(--ink);
+    text-transform:uppercase;
+    align-self:start;
+    padding-top:1px;
+  }
+  .skills-grid dd{
+    margin:0;
+    font-size:13px;
+    line-height:1.55;
+    color:#2c3138;
+  }
+
+  @media print{
+    body{ background:var(--paper); }
+    .sheet{ box-shadow:none; margin:0; padding:36px 44px; max-width:100%; }
+  }
+
+  @media (max-width:600px){
+    .sheet{ padding:32px 22px; }
+    header{ flex-direction:column; align-items:flex-start; }
+    .contact{ text-align:left; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+
+  <header>
+    <h1>Alaa Mohamad</h1>
+  </header>
+
+  <section>
+    <h2>Education</h2>
+    <div class="entry">
+      <div class="entry-head">
+        <span class="role">American University of Beirut</span>
+        <span class="where">Beirut, Lebanon</span>
+      </div>
+      <div class="line2">
+        <span class="org">Bachelor of Science in Computer Science</span>
+        <span class="when">Aug. 2023 – May 2026</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Experience</h2>
+
+    <div class="entry">
+      <div class="entry-head">
+        <span class="role">NLP/AI Research Assistant</span>
+        <span class="when">October 2025 – June 2026</span>
+      </div>
+      <div class="line2">
+        <span class="org">American University of Beirut</span>
+        <span class="where">Beirut, Lebanon</span>
+      </div>
+      <ul>
+        <li>Assisted in research applying NLP and large language models to pharmacovigilance, focusing on adverse drug event detection and clinical text analysis.</li>
+        <li>Investigated hallucination mitigation strategies in transformer-based models and explored explainable AI (XAI) techniques to improve model interpretability in high-stakes medical contexts.</li>
+        <li>Contributed to work on speaker diarization and ambient AI for clinical documentation, supporting automated and accurate medical record generation.</li>
+        <li>Co-authored a research paper targeting submission to a top-tier NLP/AI conference.</li>
+      </ul>
+    </div>
+
+    <div class="entry">
+      <div class="entry-head">
+        <span class="role">Software Engineering Research Assistant</span>
+        <span class="when">May 2025 – May 2026</span>
+      </div>
+      <div class="line2">
+        <span class="org">University of Illinois Urbana-Champaign</span>
+        <span class="where">Remote</span>
+      </div>
+      <ul>
+        <li>Conducted research on automated program repair using LLM-based agents, covering test automation, test case prioritization, and flaky test detection.</li>
+        <li>Constructed large-scale bug datasets to support empirical evaluation of repair agents across diverse software systems.</li>
+        <li>Co-authored a research paper currently under review at ISSTA 2026, a top-tier software engineering conference.</li>
+      </ul>
+    </div>
+
+    <div class="entry">
+      <div class="entry-head">
+        <span class="role">Web Development Intern</span>
+        <span class="when">March 2025 – June 2025</span>
+      </div>
+      <div class="line2">
+        <span class="org">Outlook Newspaper at AUB</span>
+        <span class="where">Beirut, Lebanon</span>
+      </div>
+      <ul>
+        <li>Built React frontend pages for category management and user administration.</li>
+        <li>Integrated frontend and backend for a full post publishing workflow, reducing manual steps for the editorial team.</li>
+        <li>Fixed UI bugs and improved responsiveness across the platform in collaboration with the tech team.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Projects</h2>
+
+    <div class="entry">
+      <div class="entry-head">
+        <span class="proj-title">License Plate Detection</span>
+        <span class="proj-tags">RetinaNet &middot; Character Segmentation</span>
+      </div>
+      <ul>
+        <li>Trained and optimized a RetinaNet object-detection model to detect vehicle license plates with high precision.</li>
+        <li>Designed a character-segmentation module (contour-based + preprocessing pipeline) to isolate individual plate characters for OCR-level recognition.</li>
+        <li>Built a complete computer vision pipeline: preprocessing, annotation, model training, inference, and evaluation (mAP, accuracy).</li>
+      </ul>
+    </div>
+
+    <div class="entry">
+      <div class="entry-head">
+        <span class="proj-title">AUBi — AI Chatbot for AUB Mediterraneo</span>
+      </div>
+      <ul>
+        <li>Designed and deployed a conversational AI chatbot to handle student queries on admissions, visa requirements, and campus life.</li>
+        <li>Built a React frontend and Node.js backend with RESTful API integration, and connected OpenAI's API to generate accurate, context-aware responses from official university resources.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Technical Skills</h2>
+    <dl class="skills-grid">
+      <dt>Languages</dt>
+      <dd>Java, Python, C/C++, SQL (PostgreSQL), JavaScript, HTML/CSS, R, Go</dd>
+
+      <dt>Frameworks &amp; Libraries</dt>
+      <dd>React, Node.js, FastAPI, Spring Boot, Django, Flask, PyTorch, TensorFlow, NumPy, Pandas, scikit-learn, Matplotlib, Playwright, Selenium, JUnit, Pytest</dd>
+
+      <dt>Developer Tools</dt>
+      <dd>Git, Docker, Travis CI, AWS Cloud, Microsoft Azure, MongoDB, Linux, JIRA, VS Code, IntelliJ, PyCharm</dd>
+
+      <dt>Certifications</dt>
+      <dd>ISTQB Certified Tester, ISTQB Test Automation Engineer, AWS Cloud Practitioner</dd>
+    </dl>
+  </section>
+
+</div>
+
+</body>
+</html>

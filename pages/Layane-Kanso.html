@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Layane Kanso — Computer Engineer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0b1712;
+    --bg-panel: #0f2018;
+    --bg-panel-2: #13271d;
+    --copper: #c97d3c;
+    --copper-bright: #e8a857;
+    --silk: #eaf0ea;
+    --muted: #91a598;
+    --muted-dim: #5d7367;
+    --line: #24392c;
+    --line-bright: #35513f;
+    --mint: #7fc9a0;
+    --danger: #d1694a;
+    --radius: 3px;
+    --maxw: 1180px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--silk);
+    font-family:'Inter', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  /* PCB dot-grid + faint trace texture */
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background-image:
+      radial-gradient(circle, rgba(127,201,160,0.07) 1px, transparent 1px);
+    background-size: 28px 28px;
+    pointer-events:none;
+    z-index:0;
+  }
+  .wrap{ max-width:var(--maxw); margin:0 auto; padding:0 32px; position:relative; z-index:1;}
+  h1,h2,h3{ font-family:'Space Grotesk', sans-serif; margin:0; }
+  .mono{ font-family:'IBM Plex Mono', monospace; }
+  a{ color:inherit; }
+
+  ::selection{ background:var(--copper); color:#0b1712; }
+
+  /* focus visibility */
+  a:focus-visible, button:focus-visible{
+    outline: 2px solid var(--copper-bright);
+    outline-offset: 3px;
+  }
+
+  /* ===== NAV ===== */
+  nav{
+    position:fixed; top:0; left:0; right:0; z-index:50;
+    background:rgba(11,23,18,0.86);
+    backdrop-filter: blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav-inner{
+    max-width:var(--maxw); margin:0 auto; padding:16px 32px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .nav-mark{
+    font-family:'IBM Plex Mono', monospace; font-size:13px; letter-spacing:0.06em;
+    color:var(--copper-bright); display:flex; align-items:center; gap:8px;
+  }
+  .nav-mark .via{ width:6px; height:6px; border-radius:50%; background:var(--copper-bright); box-shadow:0 0 6px var(--copper-bright); }
+  .nav-links{ display:flex; gap:28px; list-style:none; margin:0; padding:0; }
+  .nav-links a{
+    font-family:'IBM Plex Mono', monospace; font-size:12.5px; text-decoration:none;
+    color:var(--muted); letter-spacing:0.04em; text-transform:uppercase;
+    transition:color .2s;
+    padding-bottom:2px; border-bottom:1px solid transparent;
+  }
+  .nav-links a:hover{ color:var(--silk); border-bottom-color:var(--copper); }
+  .nav-toggle{ display:none; background:none; border:1px solid var(--line-bright); color:var(--silk); padding:8px 10px; font-family:'IBM Plex Mono',monospace; border-radius:var(--radius); }
+
+  @media (max-width: 760px){
+    .nav-links{ display:none; }
+    .nav-toggle{ display:block; }
+    .nav-links.open{
+      display:flex; flex-direction:column; position:absolute; top:100%; right:0; left:0;
+      background:var(--bg-panel); padding:16px 32px; gap:16px; border-bottom:1px solid var(--line);
+    }
+  }
+
+  /* ===== HERO ===== */
+  header.hero{
+    padding:168px 0 96px;
+    position:relative;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--copper-bright);
+    letter-spacing:0.12em; text-transform:uppercase; display:flex; align-items:center; gap:10px;
+    margin-bottom:22px;
+  }
+  .eyebrow::before{ content:""; width:24px; height:1px; background:var(--copper); }
+  h1.name{
+    font-size:clamp(42px, 6.4vw, 78px);
+    line-height:1.02;
+    font-weight:600;
+    letter-spacing:-0.01em;
+    max-width:14ch;
+  }
+  .hero-tagline{
+    font-family:'Inter', sans-serif; font-size:clamp(16px,2vw,19px);
+    color:var(--muted); max-width:56ch; margin-top:26px; line-height:1.6;
+  }
+  .hero-tagline b{ color:var(--silk); font-weight:600; }
+  .hero-meta{
+    display:flex; flex-wrap:wrap; gap:22px; margin-top:34px;
+    font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--muted-dim);
+  }
+  .hero-meta a{ color:var(--muted); text-decoration:none; border-bottom:1px solid var(--line-bright); padding-bottom:1px; }
+  .hero-meta a:hover{ color:var(--copper-bright); border-bottom-color:var(--copper); }
+
+  /* ===== SIGNATURE: SYSTEM STACK ===== */
+  .stack-section{ padding:20px 0 110px; position:relative; }
+  .stack-label{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--muted-dim);
+    letter-spacing:0.1em; margin-bottom:18px; text-transform:uppercase;
+  }
+  .stack{
+    display:flex; flex-direction:column-reverse; gap:2px;
+    border:1px solid var(--line); border-radius:6px; overflow:hidden;
+    background:var(--bg-panel);
+  }
+  .layer{
+    display:grid; grid-template-columns: 200px 1fr; align-items:stretch;
+    border-top:1px solid var(--line);
+    position:relative;
+    background:var(--bg-panel);
+    transition:background .25s ease;
+    cursor:default;
+  }
+  .layer:first-child{ border-top:none; }
+  .layer:hover{ background:var(--bg-panel-2); }
+  .layer-tag{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--copper);
+    padding:22px 24px; display:flex; flex-direction:column; justify-content:center; gap:6px;
+    border-right:1px dashed var(--line-bright);
+  }
+  .layer-tag .lname{ font-size:15px; color:var(--silk); font-weight:600; letter-spacing:0.01em; }
+  .layer-tag .lnum{ color:var(--muted-dim); font-size:11px; }
+  .layer-chips{
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:18px 24px;
+  }
+  .chip{
+    font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--mint);
+    border:1px solid var(--line-bright); border-radius:999px; padding:5px 12px;
+    background:rgba(127,201,160,0.05);
+    white-space:nowrap;
+  }
+  @media (max-width: 640px){
+    .layer{ grid-template-columns:1fr; }
+    .layer-tag{ border-right:none; border-bottom:1px dashed var(--line-bright); padding:16px 18px 10px; }
+    .layer-chips{ padding:12px 18px 18px; }
+  }
+
+  /* ===== SECTION SHELL ===== */
+  section{ padding:90px 0; position:relative; border-top:1px solid var(--line); }
+  .sec-head{ display:flex; align-items:baseline; gap:16px; margin-bottom:44px; }
+  .sec-num{ font-family:'IBM Plex Mono', monospace; color:var(--copper); font-size:13px; }
+  .sec-title{ font-size:clamp(26px,3vw,34px); font-weight:600; }
+  .sec-intro{ color:var(--muted); max-width:64ch; margin-top:14px; line-height:1.65; font-size:15.5px; }
+
+  /* ===== ABOUT ===== */
+  .about-grid{ display:grid; grid-template-columns: 1.3fr 1fr; gap:60px; }
+  .about-grid p{ color:var(--muted); line-height:1.75; font-size:16px; }
+  .about-grid p + p{ margin-top:16px; }
+  .fact-panel{ border:1px solid var(--line); border-radius:6px; padding:24px; background:var(--bg-panel); }
+  .fact-row{ display:flex; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
+  .fact-row:last-child{ border-bottom:none; }
+  .fact-row .k{ font-family:'IBM Plex Mono', monospace; color:var(--muted-dim); }
+  .fact-row .v{ color:var(--silk); text-align:right; }
+  @media (max-width:800px){ .about-grid{ grid-template-columns:1fr; } }
+
+  /* ===== EXPERIENCE ===== */
+  .exp-card{
+    border:1px solid var(--line); border-radius:6px; background:var(--bg-panel);
+    padding:32px; display:grid; grid-template-columns: 220px 1fr; gap:32px;
+  }
+  .exp-when{ font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--muted-dim); }
+  .exp-role{ font-size:19px; font-weight:600; margin-bottom:4px; }
+  .exp-org{ color:var(--copper-bright); font-family:'IBM Plex Mono', monospace; font-size:13px; margin-bottom:18px; }
+  .exp-pipeline{
+    display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:18px 0 20px;
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--mint);
+  }
+  .exp-pipeline .step{ border:1px solid var(--line-bright); padding:5px 10px; border-radius:4px; }
+  .exp-pipeline .arrow{ color:var(--muted-dim); }
+  .exp-list{ margin:0; padding-left:18px; color:var(--muted); line-height:1.7; font-size:14.5px; }
+  .exp-list li{ margin-bottom:6px; }
+  @media (max-width:760px){ .exp-card{ grid-template-columns:1fr; } }
+
+  /* ===== PROJECTS ===== */
+  .proj-grid{ display:grid; grid-template-columns: repeat(2, 1fr); gap:20px; }
+  .proj-card{
+    border:1px solid var(--line); border-radius:6px; padding:26px;
+    background:var(--bg-panel); position:relative; overflow:hidden;
+    transition: border-color .2s, transform .2s;
+  }
+  .proj-card:hover{ border-color:var(--copper); transform:translateY(-2px); }
+  .proj-card::after{
+    content:""; position:absolute; top:0; right:0; width:46px; height:46px;
+    background: linear-gradient(135deg, transparent 50%, var(--line) 50%);
+    opacity:.6;
+  }
+  .proj-num{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--muted-dim); }
+  .proj-title{ font-size:19px; font-weight:600; margin:10px 0 10px; }
+  .proj-desc{ color:var(--muted); font-size:14px; line-height:1.65; margin-bottom:16px; }
+  .proj-tags{ display:flex; flex-wrap:wrap; gap:7px; }
+  .tag{ font-family:'IBM Plex Mono', monospace; font-size:10.8px; color:var(--copper-bright); border:1px solid var(--line-bright); padding:3px 9px; border-radius:3px; }
+  @media (max-width:760px){ .proj-grid{ grid-template-columns:1fr; } }
+
+  .also-built{
+    margin-top:26px; border:1px dashed var(--line-bright); border-radius:6px; padding:22px 26px; color:var(--muted); font-size:13.8px; line-height:1.9;
+  }
+  .also-built .k{ font-family:'IBM Plex Mono', monospace; color:var(--muted-dim); font-size:12px; text-transform:uppercase; letter-spacing:.08em; display:block; margin-bottom:10px; }
+  .also-built span.item{ color:var(--silk); }
+  .also-built span.item::after{ content:"·"; color:var(--muted-dim); margin:0 8px; }
+  .also-built span.item:last-child::after{ content:""; }
+
+  /* ===== SKILLS ===== */
+  .skill-groups{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+  .skill-card{ border:1px solid var(--line); border-radius:6px; padding:22px; background:var(--bg-panel); }
+  .skill-card h3{ font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--copper-bright); text-transform:uppercase; letter-spacing:.08em; margin-bottom:14px; }
+  .skill-card ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:9px; }
+  .skill-card li{ font-size:13.5px; color:var(--muted); position:relative; padding-left:14px; }
+  .skill-card li::before{ content:""; position:absolute; left:0; top:7px; width:5px; height:5px; background:var(--mint); border-radius:50%; }
+  @media (max-width:900px){ .skill-groups{ grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:520px){ .skill-groups{ grid-template-columns:1fr; } }
+
+  /* ===== EDUCATION / CERTS ===== */
+  .edu-item{ display:grid; grid-template-columns: 160px 1fr; gap:24px; padding:24px 0; border-bottom:1px solid var(--line); }
+  .edu-item:last-child{ border-bottom:none; }
+  .edu-when{ font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--muted-dim); }
+  .edu-deg{ font-size:17px; font-weight:600; margin-bottom:4px; }
+  .edu-org{ color:var(--muted); font-size:14px; }
+  @media (max-width:600px){ .edu-item{ grid-template-columns:1fr; gap:6px; } }
+
+  .cert-list{ display:flex; flex-direction:column; gap:12px; margin-top:8px; }
+  .cert-row{ display:flex; gap:14px; align-items:flex-start; font-size:14px; color:var(--muted); line-height:1.6; }
+  .cert-row .dot{ margin-top:7px; width:6px; height:6px; border-radius:50%; background:var(--copper); flex-shrink:0; }
+  .cert-row b{ color:var(--silk); font-weight:600; }
+
+  /* ===== FOOTER ===== */
+  footer{ padding:80px 0 60px; border-top:1px solid var(--line); }
+  .footer-inner{ display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:30px; }
+  .footer-cta h2{ font-size:clamp(28px,4vw,44px); max-width:14ch; }
+  .footer-links{ display:flex; flex-direction:column; gap:10px; font-family:'IBM Plex Mono', monospace; font-size:13.5px; }
+  .footer-links a{ color:var(--muted); text-decoration:none; }
+  .footer-links a:hover{ color:var(--copper-bright); }
+  .footer-bottom{ margin-top:60px; padding-top:24px; border-top:1px solid var(--line); display:flex; justify-content:space-between; color:var(--muted-dim); font-family:'IBM Plex Mono', monospace; font-size:11.5px; flex-wrap:wrap; gap:10px; }
+
+  .reveal{ opacity:0; transform:translateY(14px); transition:opacity .6s ease, transform .6s ease; }
+  .reveal.in{ opacity:1; transform:translateY(0); }
+
+  @media (prefers-reduced-motion: reduce){
+    html{ scroll-behavior:auto; }
+    .reveal{ transition:none; opacity:1; transform:none; }
+    .proj-card:hover{ transform:none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="nav-mark"><span class="via"></span>LK / ENGINEERING LOG</div>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#about">About</a></li>
+      <li><a href="#experience">Experience</a></li>
+      <li><a href="#projects">Projects</a></li>
+      <li><a href="#skills">Skills</a></li>
+      <li><a href="#education">Education</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+    <button class="nav-toggle mono" id="navToggle" aria-label="Toggle menu">☰</button>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Beirut, Lebanon · Computer Engineering, LAU</div>
+    <h1 class="name">Layane Kanso</h1>
+    <p class="hero-tagline">
+      I build systems end to end — from <b>interrupts and ADCs on a microcontroller</b>
+      to <b>retrieval pipelines that reason over documents</b>. Currently an AI-track intern
+      at Dar Al-Handasah, and always happiest debugging something at the layer where hardware,
+      data, and language models meet.
+    </p>
+    <div class="hero-meta">
+      <span>Expected graduation — 2027</span>
+    </div>
+  </div>
+</header>
+
+<div class="stack-section wrap">
+  <div class="stack-label">// the stack I work across — hover a layer</div>
+  <div class="stack reveal">
+    <div class="layer">
+      <div class="layer-tag">
+        <span class="lnum">L0</span>
+        <span class="lname">Hardware</span>
+      </div>
+      <div class="layer-chips">
+        <span class="chip">HCS12 microcontroller</span>
+        <span class="chip">68K Assembly</span>
+        <span class="chip">ADC weight sensing</span>
+        <span class="chip">LCD / buzzer / interrupts</span>
+        <span class="chip">Quartus · LTspice</span>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="layer-tag">
+        <span class="lnum">L1</span>
+        <span class="lname">Systems &amp; Firmware</span>
+      </div>
+      <div class="layer-chips">
+        <span class="chip">C++ / OOP</span>
+        <span class="chip">FSM design</span>
+        <span class="chip">Memory management</span>
+        <span class="chip">Multithreading</span>
+        <span class="chip">EASy68K</span>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="layer-tag">
+        <span class="lnum">L2</span>
+        <span class="lname">Data &amp; Backend</span>
+      </div>
+      <div class="layer-chips">
+        <span class="chip">SQL · MySQL / SQLite</span>
+        <span class="chip">REST APIs</span>
+        <span class="chip">Node.js / Express</span>
+        <span class="chip">React</span>
+        <span class="chip">Database design</span>
+      </div>
+    </div>
+    <div class="layer">
+      <div class="layer-tag">
+        <span class="lnum">L3</span>
+        <span class="lname">Intelligence</span>
+      </div>
+      <div class="layer-chips">
+        <span class="chip">RAG pipelines</span>
+        <span class="chip">FAISS retrieval</span>
+        <span class="chip">TensorFlow / Keras</span>
+        <span class="chip">scikit-learn</span>
+        <span class="chip">Prompt engineering</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section id="about">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num mono">01</span>
+      <h2 class="sec-title">About</h2>
+    </div>
+    <div class="about-grid">
+      <div class="reveal">
+        <p>I'm a Computer Engineering student at the Lebanese American University, expecting to
+        graduate in 2027. My work sits at the boundary between hardware and software — I've wired
+        interrupts on a microcontroller and I've built retrieval pipelines that let a language
+        model reason over a technical document, often in the same semester.</p>
+        <p>I like environments where I have to move across the whole stack: writing assembly for a
+        student board one week, evaluating a RAG pipeline's retrieval precision the next. I'm
+        looking for opportunities where that range is an asset, not a distraction — and where I
+        can keep learning by shipping real, working systems.</p>
+      </div>
+      <div class="fact-panel reveal">
+        <div class="fact-row"><span class="k mono">LOCATION</span><span class="v">Beirut, Lebanon</span></div>
+        <div class="fact-row"><span class="k mono">DEGREE</span><span class="v">B.E. Computer Engineering</span></div>
+        <div class="fact-row"><span class="k mono">SCHOOL</span><span class="v">Lebanese American University</span></div>
+        <div class="fact-row"><span class="k mono">GRAD</span><span class="v">Expected 2027</span></div>
+        <div class="fact-row"><span class="k mono">STATUS</span><span class="v">Interning — AI track</span></div>
+        <div class="fact-row"><span class="k mono">HONORS</span><span class="v">Honors List, Spring '24, Fall '25 &amp; Spring '26</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="experience">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num mono">02</span>
+      <h2 class="sec-title">Experience</h2>
+    </div>
+    <div class="exp-card reveal">
+      <div>
+        <div class="exp-when">Current</div>
+      </div>
+      <div>
+        <div class="exp-role">Artificial Intelligence Intern</div>
+        <div class="exp-org">DAR AL-HANDASAH (SHAIR &amp; PARTNERS) — IT Department, AI Track</div>
+        <p style="color:var(--muted); font-size:14.5px; line-height:1.7; margin:0 0 4px;">
+          Building and evaluating a Retrieval-Augmented Generation (RAG) pipeline over the
+          CIS Controls v8 document, from raw PDF to a measured, benchmarked answer.
+        </p>
+        <div class="exp-pipeline">
+          <span class="step">Parse</span><span class="arrow">→</span>
+          <span class="step">Chunk</span><span class="arrow">→</span>
+          <span class="step">Embed</span><span class="arrow">→</span>
+          <span class="step">Store</span><span class="arrow">→</span>
+          <span class="step">Retrieve</span><span class="arrow">→</span>
+          <span class="step">Generate</span><span class="arrow">→</span>
+          <span class="step">Evaluate</span>
+        </div>
+        <ul class="exp-list">
+          <li>Parsed source documents with <span class="mono" style="color:var(--silk)">unstructured</span> (hi-res strategy) and chunked with a recursive character splitter.</li>
+          <li>Embedded with <span class="mono" style="color:var(--silk)">BAAI/bge-small-en-v1.5</span> and stored vectors in Weaviate for retrieval.</li>
+          <li>Added cross-encoder reranking (<span class="mono" style="color:var(--silk)">ms-marco-MiniLM-L6-v2</span>) to sharpen retrieved results before generation.</li>
+          <li>Compared generation quality between the Gemini API and local Ollama (<span class="mono" style="color:var(--silk)">llama3.2:3b</span>).</li>
+          <li>Evaluated retrieval against a hand-labeled golden set — Precision, Recall, F1, and Hit Rate at k=1 and k=3 — and extended evaluation with DeepEval metrics.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="projects">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num mono">03</span>
+      <h2 class="sec-title">Projects</h2>
+    </div>
+    <div class="proj-grid">
+      <div class="proj-card reveal">
+        <div class="proj-num mono">P.01</div>
+        <div class="proj-title">Tourism in Lebanon</div>
+        <p class="proj-desc">A full-stack travel platform for Lebanese destinations, with booking,
+        QR-code tickets, itinerary planning, favorites, and a chatbot for recommendations.</p>
+        <div class="proj-tags">
+          <span class="tag">Full-Stack</span><span class="tag">MySQL</span><span class="tag">Chatbot</span><span class="tag">QR Ticketing</span>
+        </div>
+      </div>
+      <div class="proj-card reveal">
+        <div class="proj-num mono">P.02</div>
+        <div class="proj-title">3-Stage Elevator System</div>
+        <p class="proj-desc">A three-floor elevator built on an HCS12 microcontroller, integrating
+        LEDs, a buzzer, an LCD display, interrupt handling, and ADC-based weight monitoring.</p>
+        <div class="proj-tags">
+          <span class="tag">HCS12</span><span class="tag">Interrupts</span><span class="tag">ADC</span><span class="tag">Embedded</span>
+        </div>
+      </div>
+      <div class="proj-card reveal">
+        <div class="proj-num mono">P.03</div>
+        <div class="proj-title">Event Management System</div>
+        <p class="proj-desc">A full-stack system for browsing events, booking tickets, and
+        generating QR codes, with role-based access for admins, organizers, and users.</p>
+        <div class="proj-tags">
+          <span class="tag">REST APIs</span><span class="tag">Role-Based Access</span><span class="tag">Full-Stack</span>
+        </div>
+      </div>
+      <div class="proj-card reveal">
+        <div class="proj-num mono">P.04</div>
+        <div class="proj-title">AI Nutrition Agent</div>
+        <p class="proj-desc">An AI-powered nutrition assistant using FAISS-based retrieval and
+        tool-based reasoning for calorie estimation, hydration tracking, and goal assessment.</p>
+        <div class="proj-tags">
+          <span class="tag">FAISS</span><span class="tag">Tool-Use Agent</span><span class="tag">Retrieval</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="also-built reveal">
+      <span class="k">Also built</span>
+      <span class="item">Logic-Controlled Hardware Board</span>
+      <span class="item">AM Receiver</span>
+      <span class="item">Porsche Dealership Management System (C++ OOP)</span>
+      <span class="item">SMPCache Simulator — cache replacement policies</span>
+      <span class="item">Shopping Website (HTML)</span>
+      <span class="item">Hotel Management System with GUI</span>
+      <span class="item">Deep Learning Classification Models (Keras)</span>
+      <span class="item">Student Record Management System (68K Assembly)</span>
+      <span class="item">GUI Learning &amp; Games Application</span>
+    </div>
+  </div>
+</section>
+
+<section id="skills">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num mono">04</span>
+      <h2 class="sec-title">Skills</h2>
+    </div>
+    <div class="skill-groups">
+      <div class="skill-card reveal">
+        <h3>Languages</h3>
+        <ul>
+          <li>C++ · Java</li>
+          <li>Python (NumPy, scikit-learn, Keras)</li>
+          <li>JavaScript</li>
+          <li>68K Assembly</li>
+          <li>SQL · HTML</li>
+          <li>Bash / Shell scripting</li>
+        </ul>
+      </div>
+      <div class="skill-card reveal">
+        <h3>Tools &amp; Platforms</h3>
+        <ul>
+          <li>GitHub · LaTeX</li>
+          <li>PowerShell</li>
+          <li>EASy68K · Quartus</li>
+          <li>LTspice</li>
+          <li>MySQL / SQLite</li>
+          <li>Render</li>
+        </ul>
+      </div>
+      <div class="skill-card reveal">
+        <h3>Frameworks</h3>
+        <ul>
+          <li>STL · JSON</li>
+          <li>React · Node.js · Express</li>
+          <li>TensorFlow / Keras</li>
+          <li>FAISS</li>
+        </ul>
+      </div>
+      <div class="skill-card reveal">
+        <h3>Concepts</h3>
+        <ul>
+          <li>OOP · Debugging</li>
+          <li>Multithreading</li>
+          <li>Memory management</li>
+          <li>FSM · Hardware automation</li>
+          <li>Database design</li>
+          <li>REST APIs</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="education">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="sec-num mono">05</span>
+      <h2 class="sec-title">Education &amp; Certifications</h2>
+    </div>
+
+    <div class="edu-item reveal">
+      <div class="edu-when mono">Expected 2027</div>
+      <div>
+        <div class="edu-deg">Bachelor of Engineering, Computer Engineering</div>
+        <div class="edu-org">Lebanese American University (LAU), Lebanon</div>
+      </div>
+    </div>
+    <div class="edu-item reveal">
+      <div class="edu-when mono">Graduated 2023</div>
+      <div>
+        <div class="edu-deg">Lebanese Baccalaureate — Life Sciences</div>
+        <div class="edu-org">Soeurs de la Charité de Besançon, Baabda · High Distinction</div>
+      </div>
+    </div>
+
+    <div class="cert-list" style="margin-top:36px;">
+      <div class="cert-row reveal"><span class="dot"></span><span><b>Honors List</b> — Lebanese American University, Spring 2024, Fall 2025 &amp; Spring 2026</span></div>
+      <div class="cert-row reveal"><span class="dot"></span><span><b>DataCamp:</b> Understanding Data Engineering, Data Manipulation in SQL, Intro to Statistics in Python, Introduction to SQL, Introduction to Python for Developers, Data Processing in Shell, Prompt Engineering</span></div>
+    </div>
+  </div>
+</section>
+
+<footer id="contact">
+  <div class="wrap">
+    <div class="footer-inner">
+      <div class="footer-cta reveal">
+        <div class="eyebrow">Get in touch</div>
+        <h2>Let's build<br>something.</h2>
+      </div>
+      <div class="footer-links reveal">
+        <span>Beirut, Lebanon</span>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>LAYANE KANSO — COMPUTER ENGINEERING</span>
+      <span>BUILT LAYER BY LAYER, L0 → L3</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // mobile nav
+  const navToggle = document.getElementById('navToggle');
+  const navLinks = document.getElementById('navLinks');
+  navToggle.addEventListener('click', () => navLinks.classList.toggle('open'));
+  navLinks.querySelectorAll('a').forEach(a => a.addEventListener('click', () => navLinks.classList.remove('open')));
+
+  // scroll reveal
+  const revealEls = document.querySelectorAll('.reveal');
+  if('IntersectionObserver' in window){
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    revealEls.forEach(el => io.observe(el));
+  } else {
+    revealEls.forEach(el => el.classList.add('in'));
+  }
+</script>
+
+</body>
+</html>
