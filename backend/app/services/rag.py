@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from typing import Any
 
-from generation import (
+from app.services.generation import (
     close_ollama_client,
     generate_answer,
+    stream_answer,
     verify_ollama,
 )
-from reranking import (
+from app.services.reranking import (
     BGEReranker,
     rerank_documents,
 )
-from retrieval import (
+from app.services.retrieval import (
     connect_to_weaviate,
     create_retriever,
     retrieve_top_k,
@@ -204,6 +206,81 @@ def run_rag_pipeline(question: str) -> tuple[str, dict[str, Any]]:
     finally:
         if client is not None:
             client.close()
+
+
+def stream_rag_pipeline(question: str) -> Iterator[str]:
+    """
+    Run retrieval and reranking, then stream the generated answer.
+
+    The Weaviate client stays open while retrieval and reranking run and is
+    closed before generation begins. Ollama text chunks are yielded as soon
+    as they are produced.
+    """
+
+    clean_question = question.strip()
+
+    if not clean_question:
+        raise ValueError("The question cannot be empty.")
+
+    client = None
+
+    try:
+        print_step(1, "RETRIEVAL")
+
+        client = connect_to_weaviate()
+
+        retriever = create_retriever(
+            client=client,
+            top_k=RETRIEVAL_TOP_K,
+        )
+
+        retrieved_documents, retrieval_time = retrieve_top_k(
+            retriever=retriever,
+            question=clean_question,
+        )
+
+        if not retrieved_documents:
+            raise RuntimeError(
+                "Retrieval returned no document chunks."
+            )
+
+        print(
+            f"Retrieved {len(retrieved_documents)} chunks "
+            f"in {retrieval_time:.3f} seconds."
+        )
+
+        print_step(2, "RERANKING")
+
+        reranker = BGEReranker()
+
+        reranked_documents, reranking_time = rerank_documents(
+            question=clean_question,
+            documents=retrieved_documents,
+            reranker=reranker,
+            top_n=FINAL_CONTEXT_DOCUMENTS,
+        )
+
+        if not reranked_documents:
+            raise RuntimeError(
+                "Reranking returned no document chunks."
+            )
+
+        print(
+            f"Selected {len(reranked_documents)} "
+            f"highest-scoring chunks "
+            f"in {reranking_time:.3f} seconds."
+        )
+
+    finally:
+        if client is not None:
+            client.close()
+
+    print_step(3, "GENERATION")
+
+    yield from stream_answer(
+        question=clean_question,
+        documents=reranked_documents,
+    )
 
 
 # ---------------------------------------------------------------------------

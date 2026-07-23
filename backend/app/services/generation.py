@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from collections.abc import Iterator
 from typing import Any, Sequence
 
 from ollama import Client
@@ -221,17 +222,39 @@ You are a professional cybersecurity assistant specializing in the CIS Controls.
 
 Answer the user's question using ONLY the retrieved CIS context.
 
+GROUNDING RULES:
+- Do not use any external knowledge, training data, or general cybersecurity knowledge that is not explicitly present in the retrieved context.
+- If the user asks about a topic, control, or safeguard not covered in the retrieved context, do not attempt to answer from memory—treat it as insufficient context.
+- Do not fill gaps in the retrieved context with assumptions, common knowledge, or industry best practices unless they are explicitly stated in the sources.
+- If only part of the question can be answered from the retrieved context, answer only that part and clearly state that the remaining information is not available in the retrieved context.
+
 STRICT RULES:
 - Give only the final answer intended for the user.
-- Do not reveal reasoning, analysis, planning, notes, or intermediate steps.
-- Do not describe how you searched, compared, or combined the sources.
-- Do not restate the question.
-- Answer naturally and directly, like a chatbot.
-- Combine relevant evidence into one clear response.
-- Cite supporting evidence using [Source 1], [Source 2], and similar labels.
-- Keep the answer concise and professional.
-- If the context is insufficient, reply exactly:
-  "The retrieved context does not contain enough information to answer this question."
+- Do not reveal reasoning, internal analysis, planning, notes, or intermediate steps.
+- Do not describe how you searched, compared, or combined the retrieved documents.
+- Do not restate the user's question.
+- Answer naturally and directly, like a modern AI assistant.
+- Combine relevant information from multiple retrieved sources into one coherent answer.
+- Cite supporting evidence using [Source 1], [Source 2], etc.
+- Keep the answer accurate, concise, and professional.
+
+FORMATTING RULES:
+- Use Markdown formatting whenever it improves readability.
+- For answers longer than approximately 150 words, begin with a short descriptive heading.
+- Use ## headings to separate major sections when appropriate.
+- Use bullet points for recommendations, safeguards, benefits, risks, requirements, and key ideas.
+- Use numbered lists only when describing ordered procedures or sequential steps.
+- Use Markdown tables only when comparing multiple controls, safeguards, attributes, or concepts.
+- Always bold important cybersecurity terms, CIS Control names, safeguard IDs, filenames, commands, and key terms — even in short, one-paragraph answers.
+- Use inline code formatting for commands, filenames, paths, configuration values, and technical identifiers.
+- Keep paragraphs short (2–3 sentences whenever possible).
+- Avoid returning one large block of text.
+- Organize long answers into logical sections that are easy to scan.
+- Do not force headings or lists into short answers if they do not improve readability. This applies only to ## headings and tables — bullet points and bold key terms should still be used in short answers whenever the answer contains more than one distinct point or key term.
+- Use a friendly, professional tone without unnecessary filler.
+
+If the retrieved context is insufficient, reply exactly:
+"The retrieved context does not contain enough information to answer this question."
 """.strip()
 
     user_message = f"""
@@ -241,7 +264,7 @@ QUESTION
 RETRIEVED CIS CONTEXT
 {context}
 
-Give only the final answer. Do not include reasoning or analysis.
+Give only the final answer in valid Markdown. Follow the formatting rules from the system message. Do not include reasoning or analysis.
 """.strip()
 
     return [
@@ -333,6 +356,87 @@ def generate_answer(
     }
 
     return answer, metrics
+
+
+
+def stream_answer(
+    question: str,
+    documents: Sequence[Any],
+) -> Iterator[str]:
+    """
+    Stream one grounded answer from Ollama as text chunks.
+
+    Retrieval and reranking happen before this function is called. Each
+    non-empty chunk is yielded immediately so FastAPI can forward it to the
+    browser through Server-Sent Events.
+    """
+
+    clean_question = question.strip()
+
+    if not clean_question:
+        raise ValueError("The question cannot be empty.")
+
+    context, _source_labels = build_context(documents)
+    messages = build_messages(
+        question=clean_question,
+        context=context,
+    )
+
+    try:
+        print("Sending streaming request to Ollama...")
+
+        response_stream = OLLAMA_CLIENT.chat(
+            model=MODEL_NAME,
+            messages=messages,
+            stream=True,
+            keep_alive=KEEP_ALIVE,
+            options={
+                "temperature": TEMPERATURE,
+                "top_p": TOP_P,
+                "num_predict": MAX_OUTPUT_TOKENS,
+                "num_ctx": 8192,
+            },
+        )
+
+        print("Ollama accepted the streaming request.")
+
+        received_content = False
+        chunk_number = 0
+
+        for response_chunk in response_stream:
+            chunk_number += 1
+
+            message = getattr(response_chunk, "message", None)
+
+            if message is not None:
+                content = getattr(message, "content", "")
+            elif isinstance(response_chunk, dict):
+                content = (
+                    response_chunk
+                    .get("message", {})
+                    .get("content", "")
+                )
+            else:
+                content = ""
+
+            print(
+                f"Ollama chunk {chunk_number}: "
+                f"{content!r}"
+            )
+
+            if content:
+                received_content = True
+                yield str(content)
+
+        if not received_content:
+            raise RuntimeError("Ollama returned an empty streamed answer.")
+
+    except Exception as error:
+        raise RuntimeError(
+            "\nOllama streaming generation failed.\n\n"
+            f"Model: {MODEL_NAME}\n"
+            f"Original error: {error}"
+        ) from error
 
 
 

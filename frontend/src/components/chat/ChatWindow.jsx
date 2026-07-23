@@ -1,33 +1,66 @@
+import { useEffect, useRef } from "react";
+
+import MessageBubble from "@/components/chat/MessageBubble";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import MessageBubble from "./MessageBubble";
 
-function ChatWindow({ messages, isLoading }) {
+function ChatWindow({
+  messages,
+  isThinking,
+}) {
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
+  }, [messages, isThinking]);
+
   return (
-    <ScrollArea className="min-h-0 flex-1">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6">
-        {messages.length === 0 && !isLoading ? (
-          <div className="flex min-h-[50vh] items-center justify-center">
-            <p className="text-center text-sm text-[#4D3A4D]/60">
-              Start a conversation by typing a message below.
-            </p>
-          </div>
-        ) : (
-          <>
-            {messages.map((message) => (
-              <MessageBubble key={message.id} role={message.role}>
-                {message.content}
-              </MessageBubble>
-            ))}
+    <div className="min-h-0 flex-1 overflow-hidden">
+      <ScrollArea className="h-full">
+        <div className="space-y-4 p-6">
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              role={message.role}
+              respondedInSeconds={message.respondedInSeconds}
+              isError={message.isError}
+            >
+              {message.content}
+            </MessageBubble>
+          ))}
 
-            {isLoading && (
-              <MessageBubble role="assistant">
+          {isThinking && (
+            <div className="flex items-center gap-3 px-1 py-2 text-sm text-[#4D3A4D]">
+              <div className="flex items-center gap-1">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[#BE5CA9]" />
+
+                <span
+                  className="h-2 w-2 animate-pulse rounded-full bg-[#BE5CA9]"
+                  style={{
+                    animationDelay: "150ms",
+                  }}
+                />
+
+                <span
+                  className="h-2 w-2 animate-pulse rounded-full bg-[#BE5CA9]"
+                  style={{
+                    animationDelay: "300ms",
+                  }}
+                />
+              </div>
+
+              <span className="font-medium">
                 Thinking...
-              </MessageBubble>
-            )}
-          </>
-        )}
-      </div>
-    </ScrollArea>
+              </span>
+            </div>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
+      </ScrollArea>
+    </div>
   );
 }
 
