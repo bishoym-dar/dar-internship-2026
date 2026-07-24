@@ -1,26 +1,23 @@
-//This is the bottom bar.
-//----------------------------------------
-
-//Type a message...
-
- //                   [Send]
-
-
-
- import { useState } from "react";
+import { useState } from "react";
 import { Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
-function ChatInput({ onSendMessage, isLoading }) {
-  const [message, setMessage] = useState("");
+function ChatInput({
+  onSendMessage,
+  isLoading,
+}) {
+  const [message, setMessage] =
+    useState("");
 
   function handleSubmit(event) {
     event.preventDefault();
 
-    // Guard: don't send empty messages or send while waiting for a reply
-    if (!message.trim() || isLoading) {
+    if (
+      !message.trim() ||
+      isLoading
+    ) {
       return;
     }
 
@@ -29,9 +26,10 @@ function ChatInput({ onSendMessage, isLoading }) {
   }
 
   function handleKeyDown(event) {
-    // Press Enter to send
-    // Press Shift + Enter for a new line
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
       event.preventDefault();
       handleSubmit(event);
     }
@@ -43,19 +41,34 @@ function ChatInput({ onSendMessage, isLoading }) {
         onSubmit={handleSubmit}
         className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-6"
       >
-        <div className="flex items-end gap-2 rounded-2xl border border-[#4D3A4D]/20 bg-white/70 p-2 shadow-sm backdrop-blur">
+        <div
+          data-tour="message-input-area"
+          className="flex items-end gap-2 rounded-2xl border border-[#4D3A4D]/20 bg-white/70 p-2 shadow-sm backdrop-blur"
+        >
           <Textarea
             value={message}
-            onChange={(event) => setMessage(event.target.value)}
+            onChange={(event) =>
+              setMessage(
+                event.target.value
+              )
+            }
             onKeyDown={handleKeyDown}
+            data-tour="message-input"
             placeholder="Ask a question..."
+            aria-label="Ask a question"
             className="min-h-11 max-h-40 resize-none border-0 bg-transparent text-[#4D3A4D] placeholder:text-[#4D3A4D]/50 shadow-none focus-visible:ring-0"
           />
 
           <Button
             type="submit"
             size="icon"
-            disabled={!message.trim() || isLoading}
+            disabled={
+              !message.trim() ||
+              isLoading
+            }
+            data-tour="send-message"
+            aria-label="Send message"
+            title="Send message"
             className="rounded-xl bg-[#BE5CA9] text-white hover:bg-[#BE5CA9]/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send className="size-4" />
@@ -63,7 +76,8 @@ function ChatInput({ onSendMessage, isLoading }) {
         </div>
 
         <p className="mt-2 text-center text-xs text-[#4D3A4D]/60">
-          Press Enter to send • Shift + Enter for a new line
+          Press Enter to send • Shift +
+          Enter for a new line
         </p>
       </form>
     </footer>

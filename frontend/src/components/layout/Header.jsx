@@ -1,7 +1,12 @@
-import { Bot, Menu } from "lucide-react";
+import {
+  Bot,
+  CircleHelp,
+  Menu,
+} from "lucide-react";
 
 function Header({
   onToggleSidebar,
+  onStartTour,
 }) {
   return (
     <header className="border-b border-white/10 bg-[#4D3A4D] text-white">
@@ -9,7 +14,9 @@ function Header({
         <button
           type="button"
           onClick={onToggleSidebar}
+          data-tour="sidebar-toggle"
           aria-label="Toggle sidebar"
+          title="Toggle sidebar"
           className="flex size-10 shrink-0 items-center justify-center rounded-xl transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#BE5CA9]"
         >
           <Menu className="size-5" />
@@ -19,14 +26,31 @@ function Header({
           <Bot className="size-5" />
         </div>
 
-        <div>
-          <h1 className="font-semibold leading-none">
+        <div className="min-w-0">
+          <h1 className="truncate font-semibold leading-none">
             RAG Assistant
           </h1>
 
-          <p className="mt-1 text-xs text-white/70">
+          <p className="mt-1 hidden truncate text-xs text-white/70 sm:block">
             Ask questions about your documents
           </p>
+        </div>
+
+        <div className="ml-auto">
+          <button
+            type="button"
+            onClick={onStartTour}
+            data-tour="help"
+            aria-label="Open guided tour"
+            title="Guided Tour"
+            className="flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-sm font-medium text-white/85 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-[#BE5CA9]"
+          >
+            <CircleHelp className="size-4" />
+
+            <span className="hidden sm:inline">
+              Guided Tour
+            </span>
+          </button>
         </div>
       </div>
     </header>

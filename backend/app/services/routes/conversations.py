@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Response,
+)
 from pydantic import BaseModel, Field
 
 from app.services.models.conversation import (
@@ -62,8 +66,11 @@ def create_conversation_endpoint(
 
 
 @router.get("")
-def list_conversations_endpoint() -> list[dict[str, Any]]:
-    """Return all conversations ordered by recent activity."""
+def list_conversations_endpoint(
+) -> list[dict[str, Any]]:
+    """
+    Return all conversations ordered by recent activity.
+    """
 
     try:
         return list_conversations()
@@ -79,11 +86,13 @@ def list_conversations_endpoint() -> list[dict[str, Any]]:
 def get_conversation_endpoint(
     conversation_id: str,
 ) -> dict[str, Any]:
-    """Return one conversation and all its messages."""
+    """
+    Return one conversation and all its messages.
+    """
 
     try:
         conversation = get_conversation(
-            conversation_id,
+            conversation_id
         )
 
     except ValueError as exc:
@@ -148,11 +157,13 @@ def rename_conversation_endpoint(
 def delete_conversation_endpoint(
     conversation_id: str,
 ) -> Response:
-    """Delete a conversation, its messages, and its feedback."""
+    """
+    Delete a conversation, its messages, and related feedback.
+    """
 
     try:
         was_deleted = delete_conversation(
-            conversation_id,
+            conversation_id
         )
 
     except ValueError as exc:
@@ -173,4 +184,6 @@ def delete_conversation_endpoint(
             detail="Conversation not found.",
         )
 
-    return Response(status_code=204)
+    return Response(
+        status_code=204
+    )

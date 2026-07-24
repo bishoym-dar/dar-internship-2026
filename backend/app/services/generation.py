@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import re
 import time
+from collections.abc import Iterator, Sequence
 from pathlib import Path
-from collections.abc import Iterator
-from typing import Any, Sequence
+from typing import Any, Iterable
 
-from ollama import Client
 from langchain_core.documents import Document
+from ollama import Client
+
 
 OLLAMA_CLIENT = Client(
     host="http://127.0.0.1:11434",
@@ -20,29 +22,35 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = PROJECT_ROOT / "output"
 
 MODEL_NAME = "qwen2.5:3b"
-
-# Keep the model loaded in memory briefly so repeated questions are faster.
 KEEP_ALIVE = "10m"
 
-# Generation settings.
 TEMPERATURE = 0.1
 TOP_P = 0.9
 MAX_OUTPUT_TOKENS = 2000
-
-# Maximum number of reranked documents given to the LLM.
 MAX_CONTEXT_DOCUMENTS = 5
+MAX_CORRECTION_ATTEMPTS = 1
+STREAM_CHUNK_SIZE = 32
 
 GENERATION_RESULTS_FILE = OUTPUT_DIR / "generation_results.txt"
+
+INSUFFICIENT_CONTEXT_MESSAGE = (
+    "The retrieved context does not contain enough information "
+    "to answer this question."
+)
+
+INVALID_ANSWER_MESSAGE = (
+    "The answer could not be generated with valid source citations. "
+    "Please try again."
+)
 
 
 # ---------------------------------------------------------------------------
 # OLLAMA CONNECTION
 # ---------------------------------------------------------------------------
 
+
 def verify_ollama() -> None:
-    """
-    Confirm that Ollama is running and the configured model is installed.
-    """
+    """Confirm that Ollama is running and the configured model is installed."""
 
     try:
         response = OLLAMA_CLIENT.list()
@@ -54,8 +62,6 @@ def verify_ollama() -> None:
         ) from error
 
     installed_models: list[str] = []
-
-    # Support both object-style and dictionary-style responses.
     models = getattr(response, "models", None)
 
     if models is None and isinstance(response, dict):
@@ -84,6 +90,7 @@ def verify_ollama() -> None:
 # ---------------------------------------------------------------------------
 # DOCUMENT HELPERS
 # ---------------------------------------------------------------------------
+
 
 def get_document_text(document: Any) -> str:
     """Extract text from a LangChain Document or dictionary."""
@@ -122,7 +129,7 @@ def build_source_label(
     metadata: dict[str, Any],
     source_number: int,
 ) -> str:
-    """Create a readable source label for the prompt and final answer."""
+    """Create a readable source label for logs and saved generation results."""
 
     chunk_id = metadata.get("chunk_id", "Unknown")
     section = metadata.get("section_title") or "Unknown section"
@@ -151,111 +158,134 @@ def build_source_label(
 # CONTEXT BUILDING
 # ---------------------------------------------------------------------------
 
+
 def build_context(
     documents: Sequence[Any],
     maximum_documents: int = MAX_CONTEXT_DOCUMENTS,
 ) -> tuple[str, list[str]]:
-    """
-    Format reranked documents into a clear context block.
-
-    Returns:
-        context:
-            Text supplied to Qwen.
-
-        source_labels:
-            Human-readable references used for reporting.
-    """
+    """Format reranked documents into a numbered context block."""
 
     selected_documents = list(documents[:maximum_documents])
 
     if not selected_documents:
-        raise ValueError(
-            "No documents were provided for generation."
-        )
+        raise ValueError("No documents were provided for generation.")
 
     context_parts: list[str] = []
     source_labels: list[str] = []
+    source_number = 0
 
-    for source_number, document in enumerate(
-        selected_documents,
-        start=1,
-    ):
+    for document in selected_documents:
         text = get_document_text(document)
-        metadata = get_document_metadata(document)
 
         if not text:
             continue
 
+        source_number += 1
+        metadata = get_document_metadata(document)
         source_label = build_source_label(
             metadata=metadata,
             source_number=source_number,
         )
-
         source_labels.append(source_label)
 
+        # The citation identifier is deliberately isolated from metadata.
+        # This strongly encourages the model to cite only [Source X].
         context_parts.append(
-            f"[{source_label}]\n{text}"
+            "\n".join(
+                [
+                    f"CITATION IDENTIFIER: [Source {source_number}]",
+                    f"SOURCE METADATA: {source_label}",
+                    "SOURCE CONTENT:",
+                    text,
+                ]
+            )
         )
 
     if not context_parts:
-        raise ValueError(
-            "The supplied documents contained no usable text."
-        )
+        raise ValueError("The supplied documents contained no usable text.")
 
-    context = "\n\n".join(context_parts)
-
-    return context, source_labels
+    return "\n\n---\n\n".join(context_parts), source_labels
 
 
 # ---------------------------------------------------------------------------
 # PROMPT
 # ---------------------------------------------------------------------------
 
-def build_messages(
-    question: str,
-    context: str,
-) -> list[dict[str, str]]:
-    """Create a grounded RAG prompt for Qwen."""
 
-    system_message = """
+SYSTEM_MESSAGE = f"""
 You are a professional cybersecurity assistant specializing in the CIS Controls.
 
 Answer the user's question using ONLY the retrieved CIS context.
 
 GROUNDING RULES:
-- Do not use any external knowledge, training data, or general cybersecurity knowledge that is not explicitly present in the retrieved context.
-- If the user asks about a topic, control, or safeguard not covered in the retrieved context, do not attempt to answer from memory—treat it as insufficient context.
-- Do not fill gaps in the retrieved context with assumptions, common knowledge, or industry best practices unless they are explicitly stated in the sources.
-- If only part of the question can be answered from the retrieved context, answer only that part and clearly state that the remaining information is not available in the retrieved context.
+- Use only information explicitly present in the retrieved context.
+- Never add external knowledge, assumptions, common practices, or information from memory.
+- If only part of the question is supported, answer only that part.
+- If the context does not support an answer, return exactly:
+  {INSUFFICIENT_CONTEXT_MESSAGE}
 
-STRICT RULES:
-- Give only the final answer intended for the user.
-- Do not reveal reasoning, internal analysis, planning, notes, or intermediate steps.
-- Do not describe how you searched, compared, or combined the retrieved documents.
+CITATION RULES — NON-NEGOTIABLE:
+- Every factual sentence or factual bullet derived from context MUST end with a citation.
+- Use ONLY this exact citation format: [Source X]
+- X must be a source number present in the retrieved context.
+- Never put chunk IDs, pages, titles, filenames, sections, colons, pipes, or other metadata inside citations.
+- Never put citations in parentheses.
+- Never invent source numbers.
+- If multiple sources support one claim, write separate markers: [Source 1] [Source 2]
+- Forbidden examples include:
+  (Source 1)
+  [Source 1 | Chunk 65]
+  Source 1 · Chunk 65
+  (Source 1: page 20)
+  [Source 1: title]
+
+RESPONSE STYLE:
+- Give only the final user-facing answer.
+- Do not reveal reasoning, planning, retrieval steps, or internal analysis.
 - Do not restate the user's question.
-- Answer naturally and directly, like a modern AI assistant.
-- Combine relevant information from multiple retrieved sources into one coherent answer.
-- Cite supporting evidence using [Source 1], [Source 2], etc.
-- Keep the answer accurate, concise, and professional.
+- Start with the direct answer.
+- Write clearly, naturally, and professionally.
+- Keep paragraphs short, usually 1–3 sentences.
+- Never return one large paragraph when the answer contains multiple ideas.
+- Avoid filler, repetition, generic introductions, and generic conclusions.
 
-FORMATTING RULES:
-- Use Markdown formatting whenever it improves readability.
-- For answers longer than approximately 150 words, begin with a short descriptive heading.
-- Use ## headings to separate major sections when appropriate.
-- Use bullet points for recommendations, safeguards, benefits, risks, requirements, and key ideas.
-- Use numbered lists only when describing ordered procedures or sequential steps.
-- Use Markdown tables only when comparing multiple controls, safeguards, attributes, or concepts.
-- Always bold important cybersecurity terms, CIS Control names, safeguard IDs, filenames, commands, and key terms — even in short, one-paragraph answers.
-- Use inline code formatting for commands, filenames, paths, configuration values, and technical identifiers.
-- Keep paragraphs short (2–3 sentences whenever possible).
-- Avoid returning one large block of text.
-- Organize long answers into logical sections that are easy to scan.
-- Do not force headings or lists into short answers if they do not improve readability. This applies only to ## headings and tables — bullet points and bold key terms should still be used in short answers whenever the answer contains more than one distinct point or key term.
-- Use a friendly, professional tone without unnecessary filler.
+MARKDOWN STRUCTURE:
+- Use Markdown whenever it improves readability.
+- For detailed answers, begin with one short descriptive ## heading.
+- Use ## headings to separate genuinely different sections.
+- Use bullet points whenever there are two or more distinct facts, requirements, risks, benefits, safeguards, recommendations, or examples.
+- Use numbered lists only for ordered steps or procedures.
+- Use a Markdown table only when comparison is clearer in a table.
+- Bold important CIS Control names, safeguard IDs, cybersecurity terms, and key requirements.
+- Use inline code for commands, filenames, paths, configuration values, and technical identifiers.
+- A short, single-point answer may be one concise paragraph.
+- A multi-point answer MUST use headings and/or bullets.
 
-If the retrieved context is insufficient, reply exactly:
-"The retrieved context does not contain enough information to answer this question."
+FINAL SELF-CHECK:
+- Every factual sentence or bullet has [Source X].
+- No forbidden citation format appears.
+- Every cited source number exists in the supplied context.
+- The answer is structured and not a large paragraph when it contains multiple ideas.
+- If any check fails, silently correct it before responding.
 """.strip()
+
+
+def build_messages(
+    question: str,
+    context: str,
+    correction_request: str | None = None,
+) -> list[dict[str, str]]:
+    """Create a grounded RAG prompt for Qwen."""
+
+    correction_section = ""
+
+    if correction_request:
+        correction_section = f"""
+
+CORRECTION REQUIRED
+{correction_request}
+Rewrite the answer completely. Return only the corrected final answer.
+""".rstrip()
 
     user_message = f"""
 QUESTION
@@ -263,14 +293,16 @@ QUESTION
 
 RETRIEVED CIS CONTEXT
 {context}
+{correction_section}
 
-Give only the final answer in valid Markdown. Follow the formatting rules from the system message. Do not include reasoning or analysis.
+Return only the final answer in valid Markdown.
+Use citations only as [Source X].
 """.strip()
 
     return [
         {
             "role": "system",
-            "content": system_message,
+            "content": SYSTEM_MESSAGE,
         },
         {
             "role": "user",
@@ -280,18 +312,222 @@ Give only the final answer in valid Markdown. Follow the formatting rules from t
 
 
 # ---------------------------------------------------------------------------
+# CITATION NORMALIZATION AND VALIDATION
+# ---------------------------------------------------------------------------
+
+
+def normalize_citations(answer: str) -> str:
+    """Convert common model citation variants into the exact [Source X] form."""
+
+    normalized = answer
+
+    patterns = [
+        r"\(\s*Source\s+(\d+)\s*:\s*\[[^\]]+\]\s*\)",
+        r"\(\s*Source\s+(\d+)\s*:[^)]+\)",
+        r"\[\s*Source\s+(\d+)\s*\|[^\]]+\]",
+        r"\[\s*Source\s+(\d+)\s*:[^\]]+\]",
+        r"\(\s*Source\s+(\d+)\s*\)",
+        r"Source\s+(\d+)\s*[·|]\s*Chunk\s+[A-Za-z0-9_-]+",
+    ]
+
+    for pattern in patterns:
+        normalized = re.sub(
+            pattern,
+            r"[Source \1]",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+
+    normalized = re.sub(
+        r"\[\s*source\s+(\d+)\s*\]",
+        r"[Source \1]",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+
+    normalized = re.sub(
+        r"(\[Source\s+\d+\])(?:\s+\1)+",
+        r"\1",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+
+    return normalized.strip()
+
+
+def extract_citation_numbers(answer: str) -> set[int]:
+    """Return all source numbers cited with the valid citation format."""
+
+    return {
+        int(number)
+        for number in re.findall(
+            r"\[Source\s+(\d+)\]",
+            answer,
+            flags=re.IGNORECASE,
+        )
+    }
+
+
+def has_invalid_citation_format(answer: str) -> bool:
+    """Detect citation-like text that is not in the exact [Source X] format."""
+
+    invalid_patterns = [
+        r"\(\s*Source\s+\d+",
+        r"\[Source\s+\d+\s*[|:]",
+        r"Source\s+\d+\s*·\s*Chunk",
+    ]
+
+    return any(
+        re.search(pattern, answer, flags=re.IGNORECASE)
+        for pattern in invalid_patterns
+    )
+
+
+def looks_like_large_unstructured_paragraph(answer: str) -> bool:
+    """Flag long answers that ignore the required Markdown structure."""
+
+    if len(answer) < 550:
+        return False
+
+    has_heading = bool(re.search(r"(?m)^##\s+\S", answer))
+    has_bullets = bool(re.search(r"(?m)^[-*]\s+\S", answer))
+    has_numbered_steps = bool(re.search(r"(?m)^\d+\.\s+\S", answer))
+
+    return not (has_heading or has_bullets or has_numbered_steps)
+
+
+def validate_answer(
+    answer: str,
+    available_source_numbers: Iterable[int],
+) -> tuple[bool, list[str]]:
+    """Validate citation format, source IDs, and basic response structure."""
+
+    clean_answer = answer.strip()
+
+    if clean_answer == INSUFFICIENT_CONTEXT_MESSAGE:
+        return True, []
+
+    problems: list[str] = []
+    available_sources = set(available_source_numbers)
+    used_sources = extract_citation_numbers(clean_answer)
+
+    if has_invalid_citation_format(clean_answer):
+        problems.append("The answer contains a forbidden citation format.")
+
+    if not used_sources:
+        problems.append("The answer contains no [Source X] citations.")
+
+    unavailable_sources = used_sources - available_sources
+
+    if unavailable_sources:
+        unavailable_text = ", ".join(
+            str(number) for number in sorted(unavailable_sources)
+        )
+        problems.append(
+            f"The answer cites unavailable source numbers: {unavailable_text}."
+        )
+
+    if looks_like_large_unstructured_paragraph(clean_answer):
+        problems.append(
+            "The answer is a large paragraph and must use headings or bullets."
+        )
+
+    return not problems, problems
+
+
+# ---------------------------------------------------------------------------
 # GENERATION
 # ---------------------------------------------------------------------------
+
+
+def _ollama_chat(messages: list[dict[str, str]]) -> Any:
+    """Run one non-streaming Ollama chat request."""
+
+    return OLLAMA_CLIENT.chat(
+        model=MODEL_NAME,
+        messages=messages,
+        stream=False,
+        keep_alive=KEEP_ALIVE,
+        options={
+            "temperature": TEMPERATURE,
+            "top_p": TOP_P,
+            "num_predict": MAX_OUTPUT_TOKENS,
+            "num_ctx": 8192,
+        },
+    )
+
+
+def _extract_response_text(response: Any) -> str:
+    """Read response text from object-style or dictionary-style Ollama output."""
+
+    message = getattr(response, "message", None)
+
+    if message is not None:
+        content = getattr(message, "content", "")
+    elif isinstance(response, dict):
+        content = response.get("message", {}).get("content", "")
+    else:
+        content = ""
+
+    return str(content).strip()
+
+
+def _generate_validated_answer(
+    question: str,
+    context: str,
+    source_count: int,
+) -> tuple[str, Any, int, list[str]]:
+    """Generate, normalize, validate, and retry once if needed."""
+
+    correction_request: str | None = None
+    last_response: Any = None
+    last_problems: list[str] = []
+
+    for attempt in range(MAX_CORRECTION_ATTEMPTS + 1):
+        messages = build_messages(
+            question=question,
+            context=context,
+            correction_request=correction_request,
+        )
+
+        last_response = _ollama_chat(messages)
+        raw_answer = _extract_response_text(last_response)
+
+        if not raw_answer:
+            last_problems = ["Ollama returned an empty answer."]
+        else:
+            normalized_answer = normalize_citations(raw_answer)
+            is_valid, problems = validate_answer(
+                normalized_answer,
+                range(1, source_count + 1),
+            )
+
+            if is_valid:
+                return normalized_answer, last_response, attempt, []
+
+            last_problems = problems
+
+        correction_request = "\n".join(
+            [
+                "The previous answer failed validation:",
+                *[f"- {problem}" for problem in last_problems],
+                "Required corrections:",
+                "- Use only citations in the exact form [Source X].",
+                f"- Use only source numbers 1 through {source_count}.",
+                "- Add a citation to every factual sentence or bullet.",
+                "- Remove chunk IDs, pages, titles, and citation parentheses.",
+                "- Use headings and bullets for a multi-point or long answer.",
+            ]
+        )
+
+    return INVALID_ANSWER_MESSAGE, last_response, MAX_CORRECTION_ATTEMPTS, last_problems
+
 
 def generate_answer(
     question: str,
     documents: Sequence[Any],
 ) -> tuple[str, dict[str, Any]]:
-    """
-    Generate one grounded answer using the configured model through Ollama.
-
-    The selected model is a standard non-thinking instruction model.
-    """
+    """Generate a grounded, normalized, and validated answer."""
 
     clean_question = question.strip()
 
@@ -299,27 +535,15 @@ def generate_answer(
         raise ValueError("The question cannot be empty.")
 
     context, source_labels = build_context(documents)
-    messages = build_messages(
-        question=clean_question,
-        context=context,
-    )
-
     started_at = time.perf_counter()
 
     try:
-        response = OLLAMA_CLIENT.chat(
-            model=MODEL_NAME,
-            messages=messages,
-
-            stream=False,
-            keep_alive=KEEP_ALIVE,
-
-            options={
-                "temperature": TEMPERATURE,
-                "top_p": TOP_P,
-                "num_predict": MAX_OUTPUT_TOKENS,
-                "num_ctx": 8192,
-            },
+        answer, response, retry_count, validation_problems = (
+            _generate_validated_answer(
+                question=clean_question,
+                context=context,
+                source_count=len(source_labels),
+            )
         )
     except Exception as error:
         raise RuntimeError(
@@ -330,33 +554,29 @@ def generate_answer(
 
     duration = time.perf_counter() - started_at
 
-    answer = response.message.content.strip()
-
-    if not answer:
-        raise RuntimeError(
-            "Ollama returned an empty answer."
-        )
-
     metrics = {
         "model": MODEL_NAME,
         "thinking_enabled": False,
         "context_documents": len(source_labels),
         "generation_seconds": round(duration, 4),
-        "prompt_tokens": getattr(
-            response,
-            "prompt_eval_count",
-            None,
-        ),
-        "generated_tokens": getattr(
-            response,
-            "eval_count",
-            None,
-        ),
+        "prompt_tokens": getattr(response, "prompt_eval_count", None),
+        "generated_tokens": getattr(response, "eval_count", None),
         "source_labels": source_labels,
+        "citation_retry_count": retry_count,
+        "validation_problems": validation_problems,
     }
 
     return answer, metrics
 
+
+def chunk_text(text: str, chunk_size: int = STREAM_CHUNK_SIZE) -> Iterator[str]:
+    """Yield cleaned text in small chunks for the existing SSE interface."""
+
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than zero.")
+
+    for start in range(0, len(text), chunk_size):
+        yield text[start:start + chunk_size]
 
 
 def stream_answer(
@@ -364,11 +584,9 @@ def stream_answer(
     documents: Sequence[Any],
 ) -> Iterator[str]:
     """
-    Stream one grounded answer from Ollama as text chunks.
-
-    Retrieval and reranking happen before this function is called. Each
-    non-empty chunk is yielded immediately so FastAPI can forward it to the
-    browser through Server-Sent Events.
+    Generate the full answer first, normalize and validate it, then stream the
+    cleaned result in small chunks. This prevents malformed citations from
+    reaching the browser during the supervisor demo.
     """
 
     clean_question = question.strip()
@@ -376,73 +594,43 @@ def stream_answer(
     if not clean_question:
         raise ValueError("The question cannot be empty.")
 
-    context, _source_labels = build_context(documents)
-    messages = build_messages(
-        question=clean_question,
-        context=context,
-    )
+    context, source_labels = build_context(documents)
 
     try:
-        print("Sending streaming request to Ollama...")
+        print("Generating and validating answer with Ollama...")
 
-        response_stream = OLLAMA_CLIENT.chat(
-            model=MODEL_NAME,
-            messages=messages,
-            stream=True,
-            keep_alive=KEEP_ALIVE,
-            options={
-                "temperature": TEMPERATURE,
-                "top_p": TOP_P,
-                "num_predict": MAX_OUTPUT_TOKENS,
-                "num_ctx": 8192,
-            },
+        answer, _response, retry_count, validation_problems = (
+            _generate_validated_answer(
+                question=clean_question,
+                context=context,
+                source_count=len(source_labels),
+            )
         )
 
-        print("Ollama accepted the streaming request.")
+        print(
+            "Answer validation complete. "
+            f"Retries: {retry_count}. "
+            f"Problems after final attempt: {validation_problems}"
+        )
 
-        received_content = False
-        chunk_number = 0
+        if not answer:
+            raise RuntimeError("Ollama returned an empty answer.")
 
-        for response_chunk in response_stream:
-            chunk_number += 1
-
-            message = getattr(response_chunk, "message", None)
-
-            if message is not None:
-                content = getattr(message, "content", "")
-            elif isinstance(response_chunk, dict):
-                content = (
-                    response_chunk
-                    .get("message", {})
-                    .get("content", "")
-                )
-            else:
-                content = ""
-
-            print(
-                f"Ollama chunk {chunk_number}: "
-                f"{content!r}"
-            )
-
-            if content:
-                received_content = True
-                yield str(content)
-
-        if not received_content:
-            raise RuntimeError("Ollama returned an empty streamed answer.")
+        for chunk in chunk_text(answer):
+            yield chunk
 
     except Exception as error:
         raise RuntimeError(
-            "\nOllama streaming generation failed.\n\n"
+            "\nOllama generation failed.\n\n"
             f"Model: {MODEL_NAME}\n"
             f"Original error: {error}"
         ) from error
 
 
-
 # ---------------------------------------------------------------------------
 # CLEANUP
 # ---------------------------------------------------------------------------
+
 
 def close_ollama_client() -> None:
     """Close Ollama's underlying HTTP connection."""
@@ -452,6 +640,7 @@ def close_ollama_client() -> None:
 # ---------------------------------------------------------------------------
 # OUTPUT
 # ---------------------------------------------------------------------------
+
 
 def print_answer(
     question: str,
@@ -467,14 +656,9 @@ def print_answer(
     print(f"Question: {question}")
     print(f"Model:    {metrics['model']}")
     print("Mode:       standard chat")
-    print(
-        f"Context documents: "
-        f"{metrics['context_documents']}"
-    )
-    print(
-        f"Generation time: "
-        f"{metrics['generation_seconds']} seconds"
-    )
+    print(f"Context documents: {metrics['context_documents']}")
+    print(f"Generation time: {metrics['generation_seconds']} seconds")
+    print(f"Citation retries: {metrics.get('citation_retry_count', 0)}")
     print()
     print(answer)
     print()
@@ -488,45 +672,31 @@ def save_answer(
 ) -> None:
     """Save the generated answer and source information."""
 
-    output_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with output_path.open(
-        "w",
-        encoding="utf-8",
-    ) as output_file:
+    with output_path.open("w", encoding="utf-8") as output_file:
         output_file.write("RAG GENERATION RESULT\n")
         output_file.write("=" * 100 + "\n\n")
-
         output_file.write(f"Question: {question}\n")
-        output_file.write(
-            f"Model: {metrics['model']}\n"
-        )
+        output_file.write(f"Model: {metrics['model']}\n")
         output_file.write("Mode: standard chat\n")
         output_file.write(
-            f"Context documents: "
-            f"{metrics['context_documents']}\n"
+            f"Context documents: {metrics['context_documents']}\n"
         )
         output_file.write(
-            f"Generation time: "
-            f"{metrics['generation_seconds']} seconds\n"
+            f"Generation time: {metrics['generation_seconds']} seconds\n"
+        )
+        output_file.write(f"Prompt tokens: {metrics['prompt_tokens']}\n")
+        output_file.write(
+            f"Generated tokens: {metrics['generated_tokens']}\n"
         )
         output_file.write(
-            f"Prompt tokens: "
-            f"{metrics['prompt_tokens']}\n"
+            f"Citation retries: {metrics.get('citation_retry_count', 0)}\n\n"
         )
-        output_file.write(
-            f"Generated tokens: "
-            f"{metrics['generated_tokens']}\n\n"
-        )
-
         output_file.write("ANSWER\n")
         output_file.write("-" * 100 + "\n")
         output_file.write(answer)
         output_file.write("\n\n")
-
         output_file.write("SOURCES PROVIDED TO THE MODEL\n")
         output_file.write("-" * 100 + "\n")
 
@@ -540,24 +710,17 @@ def save_answer(
 # STANDALONE TEST
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    """
-    Test generation independently before connecting the full RAG pipeline.
 
-    These sample documents are temporary. The final rag.py file will supply
-    real reranked documents retrieved from Weaviate.
-    """
+def main() -> None:
+    """Test generation independently before connecting the full RAG pipeline."""
 
     print("=" * 80)
     print("LOCAL RAG GENERATION TEST")
     print("=" * 80)
 
     verify_ollama()
-
     question = input("Enter a test question: ").strip()
 
-    # Temporary test context only.
-    # This verifies the Ollama connection and standard chat generation.
     test_documents = [
         Document(
             page_content=(
@@ -568,9 +731,7 @@ def main() -> None:
             ),
             metadata={
                 "chunk_id": 1,
-                "section_title": (
-                    "Inventory and Control of Enterprise Assets"
-                ),
+                "section_title": "Inventory and Control of Enterprise Assets",
                 "page_start": 15,
                 "page_end": 15,
             },
@@ -583,9 +744,7 @@ def main() -> None:
             ),
             metadata={
                 "chunk_id": 2,
-                "section_title": (
-                    "Inventory and Control of Enterprise Assets"
-                ),
+                "section_title": "Inventory and Control of Enterprise Assets",
                 "page_start": 16,
                 "page_end": 16,
             },

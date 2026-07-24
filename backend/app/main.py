@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
+from datetime import datetime
+from time import perf_counter
 from typing import Any
+
+from bson import ObjectId
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,13 +22,21 @@ from app.services.models.conversation import (
     create_conversation,
     get_conversation,
 )
-from app.services.models.message import create_message
+from app.services.models.message import (
+    append_message_version,
+    create_message,
+    get_regeneration_question,
+)
 from app.services.rag import (
     run_rag_pipeline,
     stream_rag_pipeline,
 )
 from app.services.routes.conversations import (
     router as conversations_router,
+)
+
+from app.services.routes.feedback import (
+    router as feedback_router,
 )
 
 
@@ -41,6 +53,9 @@ class ChatResponse(BaseModel):
     answer: str
     conversation_id: str
     assistant_message_id: str
+    sources: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +78,7 @@ async def lifespan(
 
 app = FastAPI(
     title="EAD RAG Backend",
-    version="0.5.1",
+    version="0.7.0",
     lifespan=lifespan,
 )
 
@@ -80,10 +95,9 @@ app.add_middleware(
 )
 
 
-# Register conversation CRUD routes.
 app.include_router(conversations_router)
 
-
+app.include_router(feedback_router)
 # ---------------------------------------------------------------------------
 # GENERAL ROUTES
 # ---------------------------------------------------------------------------
@@ -124,7 +138,9 @@ def get_or_create_conversation(
         )
 
         if existing_conversation is None:
-            raise ValueError("Conversation not found.")
+            raise ValueError(
+                "Conversation not found."
+            )
 
         return existing_conversation
 
@@ -133,11 +149,72 @@ def get_or_create_conversation(
     )
 
     if len(clean_title) > 60:
-        clean_title = f"{clean_title[:57]}..."
+        clean_title = (
+            f"{clean_title[:57]}..."
+        )
 
     return create_conversation(
         title=clean_title or "New Chat",
     )
+
+
+# ---------------------------------------------------------------------------
+# SHARED STREAM HELPERS
+# ---------------------------------------------------------------------------
+
+def json_serializer(value: Any) -> str:
+    """Convert MongoDB and datetime values into JSON-compatible strings."""
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    if isinstance(value, ObjectId):
+        return str(value)
+
+    raise TypeError(
+        f"Object of type {type(value).__name__} "
+        "is not JSON serializable"
+    )
+
+
+def sse_payload(payload: dict[str, Any]) -> str:
+    """Serialize one JSON Server-Sent Event."""
+
+    return (
+        "data: "
+        f"{json.dumps(
+            payload,
+            ensure_ascii=False,
+            default=json_serializer,
+        )}"
+        "\n\n"
+    )
+
+
+def stream_rag_events(
+    question: str,
+) -> Iterator[tuple[str, Any]]:
+    """Yield validated RAG chunks and source lists."""
+
+    for event in stream_rag_pipeline(question):
+        if not isinstance(event, dict):
+            continue
+
+        event_type = event.get("type")
+
+        if event_type == "chunk":
+            chunk = str(event.get("content", ""))
+
+            if chunk:
+                yield "chunk", chunk
+
+        elif event_type == "sources":
+            sources = event.get("sources", [])
+
+            if not isinstance(sources, list):
+                sources = []
+
+            yield "sources", sources
 
 
 # ---------------------------------------------------------------------------
@@ -175,20 +252,35 @@ def chat(
             content=clean_message,
         )
 
-        answer, _pipeline_metrics = run_rag_pipeline(
+        generation_started_at = perf_counter()
+        answer, pipeline_metrics = run_rag_pipeline(
             clean_message
         )
+        responded_in_seconds = (
+            perf_counter() - generation_started_at
+        )
+
+        sources = pipeline_metrics.get(
+            "sources",
+            [],
+        )
+
+        if not isinstance(sources, list):
+            sources = []
 
         assistant_message = create_message(
             conversation_id=conversation_id,
             role="assistant",
             content=answer,
+            sources=sources,
+            responded_in_seconds=responded_in_seconds,
         )
 
         return ChatResponse(
             answer=answer,
             conversation_id=conversation_id,
             assistant_message_id=assistant_message["id"],
+            sources=sources,
         )
 
     except ValueError as exc:
@@ -198,9 +290,16 @@ def chat(
         ) from exc
 
     except Exception as exc:
+        print(
+            f"Non-streaming RAG error: {exc}"
+        )
+
         raise HTTPException(
             status_code=500,
-            detail="The RAG system could not process the message.",
+            detail=(
+                "The RAG system could not "
+                "process the message."
+            ),
         ) from exc
 
 
@@ -213,18 +312,15 @@ def create_sse_stream(
     requested_conversation_id: str | None,
 ) -> Iterator[str]:
     """
-    Save the user message, stream the RAG answer, and save the completed
-    assistant response.
-
-    The emitted SSE format remains compatible with the current frontend:
-        chunk
-        done
-        error
+    Save the user message, stream the RAG answer, then save the complete
+    assistant response and its first version.
     """
 
     try:
         conversation = get_or_create_conversation(
-            conversation_id=requested_conversation_id,
+            conversation_id=(
+                requested_conversation_id
+            ),
             first_message=message,
         )
 
@@ -237,61 +333,78 @@ def create_sse_stream(
         )
 
         full_answer_parts: list[str] = []
+        sources: list[dict[str, Any]] = []
+        generation_started_at = perf_counter()
 
-        for chunk in stream_rag_pipeline(message):
-            if not chunk:
-                continue
+        for event_type, event_value in stream_rag_events(message):
+            if event_type == "chunk":
+                chunk = str(event_value)
+                full_answer_parts.append(chunk)
 
-            full_answer_parts.append(chunk)
+                yield sse_payload(
+                    {
+                        "type": "chunk",
+                        "content": chunk,
+                    }
+                )
 
-            chunk_payload = json.dumps(
-                {
-                    "type": "chunk",
-                    "content": chunk,
-                },
-                ensure_ascii=False,
-            )
+            elif event_type == "sources":
+                sources = event_value
 
-            yield f"data: {chunk_payload}\n\n"
+                yield sse_payload(
+                    {
+                        "type": "sources",
+                        "sources": sources,
+                    }
+                )
 
+        responded_in_seconds = (
+            perf_counter() - generation_started_at
+        )
         full_answer = "".join(
             full_answer_parts
         ).strip()
 
         if not full_answer:
             raise RuntimeError(
-                "The RAG pipeline returned an empty answer."
+                "The RAG pipeline returned "
+                "an empty answer."
             )
 
-        create_message(
+        assistant_message = create_message(
             conversation_id=conversation_id,
             role="assistant",
             content=full_answer,
+            sources=sources,
+            responded_in_seconds=responded_in_seconds,
         )
 
-        # Keep the original done event expected by chatApi.js.
-        done_payload = json.dumps(
+        first_version = assistant_message["versions"][0]
+
+        yield sse_payload(
             {
                 "type": "done",
+                "assistant_message_id": assistant_message["id"],
+                "conversation_id": conversation_id,
+                "sources": sources,
+                "responded_in_seconds": responded_in_seconds,
+                "version": first_version,
+                "active_version": 0,
+                "version_count": 1,
             }
         )
-
-        yield f"data: {done_payload}\n\n"
 
     except Exception as exc:
         print(
             f"Streaming persistence error: {exc}"
         )
 
-        error_payload = json.dumps(
+        yield sse_payload(
             {
                 "type": "error",
                 "message": str(exc),
-            },
-            ensure_ascii=False,
+            }
         )
-
-        yield f"data: {error_payload}\n\n"
 
 
 @app.post("/api/chat/stream")
@@ -311,11 +424,132 @@ def chat_stream(
     return StreamingResponse(
         create_sse_stream(
             message=clean_message,
-            requested_conversation_id=request.conversation_id,
+            requested_conversation_id=(
+                request.conversation_id
+            ),
         ),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": (
+                "no-cache, no-transform"
+            ),
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# RESPONSE REGENERATION AND VERSION HISTORY
+# ---------------------------------------------------------------------------
+
+def create_regeneration_sse_stream(
+    assistant_message_id: str,
+) -> Iterator[str]:
+    """
+    Regenerate an assistant answer and append it as a new stored version.
+
+    Retrieval runs again, so each new version receives its own source list.
+    """
+
+    try:
+        question = get_regeneration_question(
+            assistant_message_id
+        )
+
+        full_answer_parts: list[str] = []
+        sources: list[dict[str, Any]] = []
+        generation_started_at = perf_counter()
+
+        for event_type, event_value in stream_rag_events(question):
+            if event_type == "chunk":
+                chunk = str(event_value)
+                full_answer_parts.append(chunk)
+
+                yield sse_payload(
+                    {
+                        "type": "chunk",
+                        "content": chunk,
+                    }
+                )
+
+            elif event_type == "sources":
+                sources = event_value
+
+                yield sse_payload(
+                    {
+                        "type": "sources",
+                        "sources": sources,
+                    }
+                )
+
+        responded_in_seconds = (
+            perf_counter() - generation_started_at
+        )
+        full_answer = "".join(
+            full_answer_parts
+        ).strip()
+
+        if not full_answer:
+            raise RuntimeError(
+                "The regenerated RAG answer was empty."
+            )
+
+        updated_message = append_message_version(
+            message_id=assistant_message_id,
+            content=full_answer,
+            sources=sources,
+            responded_in_seconds=responded_in_seconds,
+        )
+
+        active_version = updated_message["active_version"]
+        versions = updated_message.get("versions", [])
+        new_version = versions[active_version]
+
+        yield sse_payload(
+            {
+                "type": "done",
+                "assistant_message_id": updated_message["id"],
+                "conversation_id": updated_message["conversation_id"],
+                "sources": sources,
+                "responded_in_seconds": responded_in_seconds,
+                "version": new_version,
+                "versions": versions,
+                "active_version": active_version,
+                "version_count": len(versions),
+            }
+        )
+
+    except Exception as exc:
+        print(
+            f"Regeneration error: {exc}"
+        )
+
+        yield sse_payload(
+            {
+                "type": "error",
+                "message": str(exc),
+            }
+        )
+
+
+@app.post(
+    "/api/messages/{assistant_message_id}/regenerate/stream"
+)
+def regenerate_message_stream(
+    assistant_message_id: str,
+) -> StreamingResponse:
+    """Stream a new version of an existing assistant message."""
+
+    return StreamingResponse(
+        create_regeneration_sse_stream(
+            assistant_message_id
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": (
+                "no-cache, no-transform"
+            ),
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
